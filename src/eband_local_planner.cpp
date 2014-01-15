@@ -481,6 +481,12 @@ bool EBandPlanner::optimizeBand(std::vector<Bubble>& band)
 
 	// copy changes back to band
 	band = tmp_band;
+	for(int i=0;i<band.size();i++){
+		geometry_msgs::Pose2D bubble_pose2D;
+		PoseToPose2D(band.at(i).center.pose,bubble_pose2D);
+		double theta = bubble_pose2D.theta;
+		ROS_DEBUG("THETA Bubble %d: %f",i,theta);
+	}
 	return true;
 }
 
@@ -1615,14 +1621,17 @@ bool EBandPlanner::suppressTangentialForces(int bubble_num, std::vector<Bubble> 
 
 	// "project wrench" in middle bubble onto connecting vector
 	// scalar wrench*difference
-	scalar_fd = forces.wrench.force.x*difference.linear.x + forces.wrench.force.y*difference.linear.y +
+	/*scalar_fd = forces.wrench.force.x*difference.linear.x + forces.wrench.force.y*difference.linear.y +
 				forces.wrench.force.z*difference.linear.z + forces.wrench.torque.x*difference.angular.x +
-				forces.wrench.torque.y*difference.angular.y + forces.wrench.torque.z*difference.angular.z;
-
+				forces.wrench.torque.y*difference.angular.y + forces.wrench.torque.z*difference.angular.z;*/
+	scalar_fd = forces.wrench.force.x*difference.linear.x + forces.wrench.force.y*difference.linear.y +
+				forces.wrench.force.z*difference.linear.z;
+				
 	// abs of difference-vector: scalar difference*difference
-	scalar_dd = difference.linear.x*difference.linear.x + difference.linear.y*difference.linear.y + difference.linear.z*difference.linear.z +
-				difference.angular.x*difference.angular.x + difference.angular.y*difference.angular.y + difference.angular.z*difference.angular.z;
-
+	/*scalar_dd = difference.linear.x*difference.linear.x + difference.linear.y*difference.linear.y + difference.linear.z*difference.linear.z +
+				difference.angular.x*difference.angular.x + difference.angular.y*difference.angular.y + difference.angular.z*difference.angular.z;*/
+	scalar_dd = difference.linear.x*difference.linear.x + difference.linear.y*difference.linear.y + difference.linear.z*difference.linear.z;
+	
 	// avoid division by (almost) zero -> check if bubbles have (almost) same center-pose
 	if(scalar_dd <= tiny_bubble_distance_)
 	{
@@ -1634,9 +1643,9 @@ bool EBandPlanner::suppressTangentialForces(int bubble_num, std::vector<Bubble> 
 	forces.wrench.force.x = forces.wrench.force.x - scalar_fd/scalar_dd * difference.linear.x;
 	forces.wrench.force.y = forces.wrench.force.y - scalar_fd/scalar_dd * difference.linear.y;
 	forces.wrench.force.z = forces.wrench.force.z - scalar_fd/scalar_dd * difference.linear.z;
-	forces.wrench.torque.x = forces.wrench.torque.x - scalar_fd/scalar_dd * difference.angular.x;
-	forces.wrench.torque.y = forces.wrench.torque.y - scalar_fd/scalar_dd * difference.angular.y;
-	forces.wrench.torque.z = forces.wrench.torque.z - scalar_fd/scalar_dd * difference.angular.z;
+	//forces.wrench.torque.x = forces.wrench.torque.x - scalar_fd/scalar_dd * difference.angular.x;
+	//forces.wrench.torque.y = forces.wrench.torque.y - scalar_fd/scalar_dd * difference.angular.y;
+	//forces.wrench.torque.z = forces.wrench.torque.z - scalar_fd/scalar_dd * difference.angular.z;
 
 	#ifdef DEBUG_EBAND_
 	ROS_DEBUG("Supressing tangential forces: (x, y, theta) = (%f, %f, %f)",
