@@ -80,8 +80,13 @@ void EBandPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costma
 		ros::NodeHandle pn("~/" + name);
 
 		// read parameters from parameter server
+		
+		// requirements for ackermann cinematics
+		pn.param("turning_radius", turning_radius_, 0.6);
+		pn.param("center_ax_dist", center_ax_dist_, 0.228);
+		
 		// connectivity checking
-		pn.param("eband_min_relative_bubble_overlap_", min_bubble_overlap_, 0.6);
+		pn.param("eband_min_relative_bubble_overlap_", min_bubble_overlap_, 0.7);
 
 		// bubble geometric bounds
 		pn.param("eband_tiny_bubble_distance", tiny_bubble_distance_, 0.01);
@@ -1235,6 +1240,9 @@ bool EBandPlanner::applyForces(int bubble_num, std::vector<Bubble>& band, std::v
 	ROS_DEBUG("Frame %d of %d: Check successful - bubble and band valid. Applying Changes", bubble_num, ((int) band.size()) );
 	#endif
 
+	new_bubble.radius = turning_radius_;
+	new_bubble.center_ax_dist = center_ax_dist_;
+		
 	band.at(bubble_num) = new_bubble;
 
 	return true;
@@ -1474,15 +1482,16 @@ bool EBandPlanner::calcInternalForces(int bubble_num, std::vector<Bubble> band, 
 
 	// now calculate wrench - forces model an elastic band and are normed (distance) to render forces for small and large bubbles the same
 	
-	float orfac1 = (cos(difference1.angular.z/costmap_ros_->getCircumscribedRadius())+1)/2;
-	float orfac2 = (cos(difference2.angular.z/costmap_ros_->getCircumscribedRadius())+1)/2;
+	// Force dependend on orientation
+	//float orfac1 = (cos(difference1.angular.z/costmap_ros_->getCircumscribedRadius())+1)/2;
+	//float orfac2 = (cos(difference2.angular.z/costmap_ros_->getCircumscribedRadius())+1)/2;
+	//wrench.force.x = internal_force_gain_*(difference1.linear.x/distance1*orfac1 + difference2.linear.x/distance2*orfac2);
+	//wrench.force.y = internal_force_gain_*(difference1.linear.y/distance1*orfac1 + difference2.linear.y/distance2*orfac2);
+	//wrench.force.z = internal_force_gain_*(difference1.linear.z/distance1*orfac1 + difference2.linear.z/distance2*orfac2);
 	
-	//wrench.force.x = internal_force_gain_*(difference1.linear.x/distance1 + difference2.linear.x/distance2);
-	//wrench.force.y = internal_force_gain_*(difference1.linear.y/distance1 + difference2.linear.y/distance2);
-	//wrench.force.z = internal_force_gain_*(difference1.linear.z/distance1 + difference2.linear.z/distance2);
-	wrench.force.x = internal_force_gain_*(difference1.linear.x/distance1*orfac1 + difference2.linear.x/distance2*orfac2);
-	wrench.force.y = internal_force_gain_*(difference1.linear.y/distance1*orfac1 + difference2.linear.y/distance2*orfac2);
-	wrench.force.z = internal_force_gain_*(difference1.linear.z/distance1*orfac1 + difference2.linear.z/distance2*orfac2);
+	wrench.force.x = internal_force_gain_*(difference1.linear.x/distance1 + difference2.linear.x/distance2);
+	wrench.force.y = internal_force_gain_*(difference1.linear.y/distance1 + difference2.linear.y/distance2);
+	wrench.force.z = internal_force_gain_*(difference1.linear.z/distance1 + difference2.linear.z/distance2);
 	wrench.torque.x = internal_force_gain_*(difference1.angular.x/distance1 + difference2.angular.x/distance2);
 	wrench.torque.y = internal_force_gain_*(difference1.angular.y/distance1 + difference2.angular.y/distance2);
 	wrench.torque.z = internal_force_gain_*(difference1.angular.z/distance1 + difference2.angular.z/distance2);
@@ -1490,89 +1499,63 @@ bool EBandPlanner::calcInternalForces(int bubble_num, std::vector<Bubble> band, 
 	ROS_DEBUG("Internal Forces: x=%f, y=%f, az=%f",wrench.force.x,wrench.force.y,wrench.torque.z);
 
 	//additional force
-	
-	float r = 0.6;	// r = Length/tan(max Lenkwinkel)
-	float Length = 0.46;
-	
-	geometry_msgs::Pose2D prev_pose, pose, next_pose;
-	PoseToPose2D(band[bubble_num-1].center.pose,prev_pose);
-	PoseToPose2D(curr_bubble.center.pose,pose);
-	PoseToPose2D(band[bubble_num+1].center.pose,next_pose);	
 
-	double thetap, theta, thetan;
-	geometry_msgs::Point Lp, Rp, L, R, Ln ,Rn;
+	band.at(bubble_num-1).setLR();
+	curr_bubble.setLR();
+	band.at(bubble_num+1).setLR();
 	
-	thetap = prev_pose.theta;
-	theta = pose.theta;
-	thetan = next_pose.theta;
-	
-	Lp.x = prev_pose.x-Length/2*cos(thetap)-r*sin(thetap);
-	Lp.y = prev_pose.y-Length/2*sin(thetap)+r*cos(thetap);
-	Rp.x = prev_pose.x-Length/2*cos(thetap)+r*sin(thetap);
-	Rp.y = prev_pose.y-Length/2*sin(thetap)-r*cos(thetap);
-	
-	L.x = pose.x-Length/2*cos(theta)-r*sin(theta);
-	L.y = pose.y-Length/2*sin(theta)+r*cos(theta);
-	R.x = pose.x-Length/2*cos(theta)+r*sin(theta);
-	R.y = pose.y-Length/2*sin(theta)-r*cos(theta);
-	
-	Ln.x = next_pose.x-Length/2*cos(thetan)-r*sin(thetan);
-	Ln.y = next_pose.y-Length/2*sin(thetan)+r*cos(thetan);
-	Rn.x = next_pose.x-Length/2*cos(thetan)+r*sin(thetan);
-	Rn.y = next_pose.y-Length/2*sin(thetan)-r*cos(thetan);
-	
-	float addForce_fac = 1.0*r;
+	Bubble Bub_p = band.at(bubble_num-1);
+	Bubble Bub = curr_bubble;
+	Bubble Bub_n = band.at(bubble_num+1);
+
+	float addForce_fac = 1.0*turning_radius_;
 	float startfaktor = addForce_fac;
 	float endfaktor = addForce_fac;
-	if(bubble_num == 1) startfaktor *= 3.0;
-	if(bubble_num == ((int) band.size() - 2)) endfaktor *= 3.0;
+	if(bubble_num == 1) startfaktor *= 2.0;
+	if(bubble_num == ((int) band.size() - 2)) endfaktor *= 2.0;
 		
-	float distLR = sqrt((Lp.x-R.x)*(Lp.x-R.x)+(Lp.y-R.y)*(Lp.y-R.y));
-	if(distLR < 2*r)
+	float distLR = sqrt((Bub_p.L.x-Bub.R.x)*(Bub_p.L.x-Bub.R.x)+(Bub_p.L.y-Bub.R.y)*(Bub_p.L.y-Bub.R.y));
+	if(distLR < 2*turning_radius_)
 	{
-		ROS_DEBUG("Fall LpR");
 		if(distLR < tiny_bubble_distance_) distLR = tiny_bubble_distance_;
-		float fx = startfaktor*(R.x-Lp.x)/distLR/distLR;
+		float fx = startfaktor*(Bub.R.x-Bub_p.L.x)/distLR/distLR;
 		wrench.force.x += fx;
-		float fy = startfaktor*(R.y-Lp.y)/distLR/distLR;
+		float fy = startfaktor*(Bub.R.y-Bub_p.L.y)/distLR/distLR;
 		wrench.force.y += fy;
-		wrench.torque.z += (R.x-pose.x)*fy-(R.y-pose.y)*fx;
+		wrench.torque.z += (Bub.R.x-Bub.center.pose.position.x)*fy-(Bub.R.y-Bub.center.pose.position.y)*fx;
 	}
 	
-	distLR = sqrt((Ln.x-R.x)*(Ln.x-R.x)+(Ln.y-R.y)*(Ln.y-R.y));
-	if(distLR < 2*r)
+	distLR = sqrt((Bub_n.L.x-Bub.R.x)*(Bub_n.L.x-Bub.R.x)+(Bub_n.L.y-Bub.R.y)*(Bub_n.L.y-Bub.R.y));
+	if(distLR < 2*turning_radius_)
 	{
-		ROS_DEBUG("Fall LnR");
 		if(distLR < tiny_bubble_distance_) distLR = tiny_bubble_distance_;
-		float fx = endfaktor*(R.x-Ln.x)/distLR/distLR;
+		float fx = endfaktor*(Bub.R.x-Bub_n.L.x)/distLR/distLR;
 		wrench.force.x += fx;
-		float fy = endfaktor*(R.y-Ln.y)/distLR/distLR;
+		float fy = endfaktor*(Bub.R.y-Bub_n.L.y)/distLR/distLR;
 		wrench.force.y += fy;
-		wrench.torque.z += (R.x-pose.x)*fy-(R.y-pose.y)*fx;
+		wrench.torque.z += (Bub.R.x-Bub.center.pose.position.x)*fy-(Bub.R.y-Bub.center.pose.position.y)*fx;
 	}
 	
-	distLR = sqrt((Rp.x-L.x)*(Rp.x-L.x)+(Rp.y-L.y)*(Rp.y-L.y));
-	if(distLR < 2*r)
+	distLR = sqrt((Bub_p.R.x-Bub.L.x)*(Bub_p.R.x-Bub.L.x)+(Bub_p.R.y-Bub.L.y)*(Bub_p.R.y-Bub.L.y));
+	if(distLR < 2*turning_radius_)
 	{
-		ROS_DEBUG("Fall RpL");
 		if(distLR < tiny_bubble_distance_) distLR = tiny_bubble_distance_;		
-		float fx = startfaktor*(L.x-Rp.x)/distLR/distLR;
+		float fx = startfaktor*(Bub.L.x-Bub_p.R.x)/distLR/distLR;
 		wrench.force.x += fx;
-		float fy = startfaktor*(L.y-Rp.y)/distLR/distLR;
+		float fy = startfaktor*(Bub.L.y-Bub_p.R.y)/distLR/distLR;
 		wrench.force.y += fy;
-		wrench.torque.z += (L.x-pose.x)*fy-(L.y-pose.y)*fx;
+		wrench.torque.z += (Bub.L.x-Bub.center.pose.position.x)*fy-(Bub.L.y-Bub.center.pose.position.y)*fx;
 	}
 	
-	distLR = sqrt((Rn.x-L.x)*(Rn.x-L.x)+(Rn.y-L.y)*(Rn.y-L.y));
-	if(distLR < 2*r)
+	distLR = sqrt((Bub_n.R.x-Bub.L.x)*(Bub_n.R.x-Bub.L.x)+(Bub_n.R.y-Bub.L.y)*(Bub_n.R.y-Bub.L.y));
+	if(distLR < 2*turning_radius_)
 	{
-		ROS_DEBUG("Fall RnL");
 		if(distLR < tiny_bubble_distance_) distLR = tiny_bubble_distance_;
-		float fx = endfaktor*(L.x-Rn.x)/distLR/distLR;
+		float fx = endfaktor*(Bub.L.x-Bub_n.R.x)/distLR/distLR;
 		wrench.force.x += fx;
-		float fy = endfaktor*(L.y-Rn.y)/distLR/distLR;
+		float fy = endfaktor*(Bub.L.y-Bub_n.R.y)/distLR/distLR;
 		wrench.force.y += fy;
-		wrench.torque.z += (L.x-pose.x)*fy-(L.y-pose.y)*fx;
+		wrench.torque.z += (Bub.L.x-Bub.center.pose.position.x)*fy-(Bub.L.y-Bub.center.pose.position.y)*fx;
 	}
 	ROS_DEBUG("Total Force (x, y, theta) = (%f, %f, %f)", wrench.force.x, wrench.force.y, wrench.torque.z);
 		
@@ -1854,10 +1837,10 @@ bool EBandPlanner::checkOverlap(Bubble bubble1, Bubble bubble2)
 	// kinematic properties
 	if(carOverlap_)
 	{
-	/*if(sqrt((bubble1.L.x-bubble2.R.x)*(bubble1.L.x-bubble2.R.x)+(bubble1.L.y-bubble2.R.y)*(bubble1.L.y-bubble2.R.y)) < 2*bubble1.r)
+	/*if(sqrt((bubble1.L.x-bubble2.R.x)*(bubble1.L.x-bubble2.R.x)+(bubble1.L.y-bubble2.R.y)*(bubble1.L.y-bubble2.R.y)) < 2*bubble1.radius)
 		return false;
 		
-	if(sqrt((bubble1.R.x-bubble2.L.x)*(bubble1.R.x-bubble2.L.x)+(bubble1.R.y-bubble2.L.y)*(bubble1.R.y-bubble2.L.y)) < 2*bubble1.r)
+	if(sqrt((bubble1.R.x-bubble2.L.x)*(bubble1.R.x-bubble2.L.x)+(bubble1.R.y-bubble2.L.y)*(bubble1.R.y-bubble2.L.y)) < 2*bubble1.radius)
 		return false;*/
 	}
 	
@@ -2029,8 +2012,8 @@ bool EBandPlanner::convertPlanToBand(std::vector<geometry_msgs::PoseStamped> pla
 
 		// set poses in plan as centers of bubbles
 		tmp_band[i].center = plan[i];
-		tmp_band[i].half_ax_dist = 0.228;		
-		tmp_band[i].r = 0.6;
+		tmp_band[i].center_ax_dist = center_ax_dist_;		
+		tmp_band[i].radius = turning_radius_;
 		tmp_band[i].setLR();
 		
 		// calc Size of Bubbles by calculating Dist to nearest Obstacle [depends kinematic, environment]

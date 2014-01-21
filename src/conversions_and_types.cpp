@@ -45,10 +45,10 @@ void Bubble::setLR()
 {
 	float w_ = center.pose.orientation.w;
 	float z_ = center.pose.orientation.z;	
-	L.x = center.pose.position.x - half_ax_dist*(w_*w_-z_*z_)-r*(2*w_*z_);
-	L.y = center.pose.position.y - half_ax_dist*(2*w_*z_)+r*(w_*w_-z_*z_);
-	R.x = center.pose.position.x - half_ax_dist*(w_*w_-z_*z_)+r*(2*w_*z_);
-	R.y = center.pose.position.y - half_ax_dist*(2*w_*z_)-r*(w_*w_-z_*z_);
+	L.x = center.pose.position.x - center_ax_dist*(w_*w_-z_*z_)-radius*(2*w_*z_);
+	L.y = center.pose.position.y - center_ax_dist*(2*w_*z_)+radius*(w_*w_-z_*z_);
+	R.x = center.pose.position.x - center_ax_dist*(w_*w_-z_*z_)+radius*(2*w_*z_);
+	R.y = center.pose.position.y - center_ax_dist*(2*w_*z_)-radius*(w_*w_-z_*z_);
 	
 	return;
 }

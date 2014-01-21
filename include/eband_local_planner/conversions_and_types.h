@@ -65,8 +65,8 @@ struct Bubble
 {
 	geometry_msgs::PoseStamped center;
 	double expansion;
-	double half_ax_dist;// = 0.228;
-	double r;// = 0.6;
+	double center_ax_dist;
+	double radius;
 	geometry_msgs::Point L,R;
 	void setLR();	
 };
