@@ -41,6 +41,17 @@
 
 namespace eband_local_planner{
 
+void Bubble::setLR()
+{
+	float w_ = center.pose.orientation.w;
+	float z_ = center.pose.orientation.z;	
+	L.x = center.pose.position.x - half_ax_dist*(w_*w_-z_*z_)-r*(2*w_*z_);
+	L.y = center.pose.position.y - half_ax_dist*(2*w_*z_)+r*(w_*w_-z_*z_);
+	R.x = center.pose.position.x - half_ax_dist*(w_*w_-z_*z_)+r*(2*w_*z_);
+	R.y = center.pose.position.y - half_ax_dist*(2*w_*z_)-r*(w_*w_-z_*z_);
+	
+	return;
+}
 
 void PoseToPose2D(const geometry_msgs::Pose pose, geometry_msgs::Pose2D& pose2D)
 {

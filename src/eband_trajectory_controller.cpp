@@ -552,6 +552,7 @@ bool EBandTrajectoryCtrl::getTwist(geometry_msgs::Twist& twist_cmd, bool& goal_r
         
         // Assuming we're far enough from the final goal, make sure to rotate so
         // we're facing the right way
+        rotation_correction_threshold_ = 5.0; 
         if (dist_to_goal > rotation_correction_threshold_)
         {
         

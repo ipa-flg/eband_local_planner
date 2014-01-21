@@ -65,6 +65,10 @@ struct Bubble
 {
 	geometry_msgs::PoseStamped center;
 	double expansion;
+	double half_ax_dist;// = 0.228;
+	double r;// = 0.6;
+	geometry_msgs::Point L,R;
+	void setLR();	
 };
 
 enum AddAtPosition {add_front, add_back};

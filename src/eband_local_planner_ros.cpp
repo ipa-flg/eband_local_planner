@@ -149,6 +149,25 @@ bool EBandPlannerROS::setPlan(const std::vector<geometry_msgs::PoseStamped>& ori
     global_plan_.clear();
     global_plan_ = orig_global_plan;
 	
+	// variables for setting the actual orientation of the robot to first pose in global plan
+	tf::Stamped<tf::Pose> global_pose;
+	geometry_msgs::PoseStamped global_pose_msg;
+
+	// get curent robot position
+	ROS_DEBUG("Reading current robot Position from costmap and appending it to elastic band.");
+	if(!costmap_ros_->getRobotPose(global_pose))
+	{
+		ROS_WARN("Could not retrieve up to date robot pose from costmap for local planning.");
+		return false;
+	}
+
+	// convert robot pose to frame in plan
+	tf::poseStampedTFToMsg(global_pose, global_pose_msg);
+	
+	// set the orientation of the first pose to be the robot orientation
+	global_plan_[0].pose.orientation.z = global_pose_msg.pose.orientation.z;
+	global_plan_[0].pose.orientation.w = global_pose_msg.pose.orientation.w;
+	
 	// transform global plan to the map frame we are working in
 	// this also cuts the plan off (reduces it to local window)
 	std::vector<int> start_end_counts (2, (int) global_plan_.size()); // counts from the end() of the plan
