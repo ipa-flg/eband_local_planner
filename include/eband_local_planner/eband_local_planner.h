@@ -261,6 +261,16 @@ class EBandPlanner{
 		bool interpolateBubbles(geometry_msgs::PoseStamped start_center, geometry_msgs::PoseStamped end_center, geometry_msgs::PoseStamped& interpolated_center);
 
 
+/**
+		 * @brief interpolates between two bubbles by calculating the pose for the center of a bubble in the middle of the carlike reachable path connecting the bubbles [depends kinematics]
+		 * @param first of the two bubbles between which shall be interpolated
+		 * @param second of the two bubbles between which shall be interpolated
+		 * @param reference to hand back the interpolated bubble
+		 * @return true if interpolation was successful
+		 */
+		bool interpolateBubblesCarlike(Bubble start_bubble, Bubble end_bubble, Bubble& interpolated_bubble);
+
+
 		/**
 		 * @brief this checks whether two bubbles overlap
 		 * @param band on which we want to check
@@ -269,6 +279,15 @@ class EBandPlanner{
 		 * @return true if bubbles overlap
 		 */
 		bool checkOverlap(Bubble bubble1, Bubble bubble2);
+
+
+		/**
+		 * @brief This calculates the distance between two Points
+		 * @param first point
+		 * @param second point
+		 * @return distance
+		 */
+		double PointDistance(geometry_msgs::Point start_point, geometry_msgs::Point end_point);
 
 
 		/**

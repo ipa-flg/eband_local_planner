@@ -168,30 +168,9 @@ bool EBandPlanner::setPlan(const std::vector<geometry_msgs::PoseStamped>& global
 		// TODO try to do local repairs of band
 		return false;
 	}
-
-	// Set Orientations of intermediate bubbles (from start orientation to final orientation in equal steps).
-	// This prevents the planer from planning full rotations over 360°.
-	int bs = ((int) elastic_band_.size());
-	geometry_msgs::Pose2D curr_bubble_pose, prev_bubble_pose;
-	PoseToPose2D(elastic_band_.at(0).center.pose,prev_bubble_pose);
-	double theta_start, theta_end, delta_theta;
-	theta_start = prev_bubble_pose.theta;
-	PoseToPose2D(elastic_band_.at(bs-1).center.pose,curr_bubble_pose);
-	theta_end = curr_bubble_pose.theta;
-	delta_theta = angles::normalize_angle(theta_end - theta_start);
-	for(int i = 1; i < (bs-1); i++)
-	{
-		PoseToPose2D(elastic_band_.at(i).center.pose,curr_bubble_pose);		
-		//curr_bubble_pose.theta = tan((curr_bubble_pose.y-prev_bubble_pose.y)/(curr_bubble_pose.x-prev_bubble_pose.x));
-		curr_bubble_pose.theta = theta_start + i*delta_theta/bs;
-		Pose2DToPose(elastic_band_.at(i).center.pose,curr_bubble_pose);
-		elastic_band_.at(i).setLR();
-		//ROS_DEBUG("Theta am Anfang Bubble %d: t = %f",i,curr_bubble_pose.theta);
-		//ROS_DEBUG("(Center, L, R) = (%f, %f, %f, %f, %f, %f)", elastic_band_.at(i).center.pose.position.x, elastic_band_.at(i).center.pose.position.y, elastic_band_.at(i).L.x, elastic_band_.at(i).L.y, elastic_band_.at(i).R.x, elastic_band_.at(i).R.y);
-	}
-	
 	
 	// close gaps and remove redundant bubbles
+	// first time refinement without ackermann interpolation (radius of bubbles is here at default value = 0)
 	ROS_DEBUG("Refining Band");
 	if(!refineBand(elastic_band_))
 	{
@@ -201,7 +180,28 @@ bool EBandPlanner::setPlan(const std::vector<geometry_msgs::PoseStamped>& global
 
 	ROS_DEBUG("Refinement done - Band set.");
 	
-	carOverlap_ = true;
+	// Set radius of bubbles and orientations of intermediate bubbles (from start orientation to final orientation in equal steps).
+	// This prevents the planer from planning full rotations over 360°.
+	int bs = ((int) elastic_band_.size()); 
+	geometry_msgs::Pose2D bubble_pose;
+	PoseToPose2D(elastic_band_.at(0).center.pose,bubble_pose);
+	double theta_start, theta_end, delta_theta;
+	theta_start = bubble_pose.theta;
+	PoseToPose2D(elastic_band_.at(bs-1).center.pose,bubble_pose);
+	theta_end = bubble_pose.theta;
+	delta_theta = angles::normalize_angle(theta_end - theta_start);
+	for(int i = 0; i < bs; i++)
+	{
+		PoseToPose2D(elastic_band_.at(i).center.pose,bubble_pose);		
+		bubble_pose.theta = theta_start + i*delta_theta/(bs-1);
+		Pose2DToPose(elastic_band_.at(i).center.pose,bubble_pose);
+		elastic_band_.at(i).center_ax_dist = center_ax_dist_;
+		elastic_band_.at(i).radius = turning_radius_;
+		elastic_band_.at(i).setLR();
+		//ROS_DEBUG("Theta am Anfang Bubble %d: t = %f",i,bubble_pose.theta);
+		//ROS_DEBUG("(Center, L, R) = (%f, %f, %f, %f, %f, %f)", elastic_band_.at(i).center.pose.position.x, elastic_band_.at(i).center.pose.position.y, elastic_band_.at(i).L.x, elastic_band_.at(i).L.y, elastic_band_.at(i).R.x, elastic_band_.at(i).R.y);
+	}
+	
 	
 	return true;
 }
@@ -730,7 +730,7 @@ bool EBandPlanner::removeAndFill(std::vector<Bubble>& band, std::vector<Bubble>:
 }
 
 
-bool EBandPlanner::fillGap(std::vector<Bubble>& band, std::vector<Bubble>::iterator& start_iter,std::vector<Bubble>::iterator& end_iter)
+bool EBandPlanner::fillGap(std::vector<Bubble>& band, std::vector<Bubble>::iterator& start_iter, std::vector<Bubble>::iterator& end_iter)
 {
 	// insert bubbles in the middle between not-overlapping bubbles (e.g. (Dist > Size Bub1) && (Dist > Size Bub2) )
 	// repeat until gaps are closed
@@ -753,15 +753,31 @@ bool EBandPlanner::fillGap(std::vector<Bubble>& band, std::vector<Bubble>::itera
 	#endif
 
 	// interpolate between bubbles [depends kinematic]
-	if(!interpolateBubbles(start_iter->center, end_iter->center, interpolated_center))
+	if(turning_radius_ == 0.0)
 	{
-		// interpolation failed (for whatever reason), so return with false
-		start_num = std::distance(band.begin(), start_iter);
-		end_num = std::distance(band.begin(), end_iter);
-		ROS_DEBUG("Interpolation failed while trying to fill gap between bubble %d and %d.", start_num, end_num);
-		return false;
+		if(!interpolateBubbles(start_iter->center, end_iter->center, interpolated_center))
+		{
+			// interpolation failed (for whatever reason), so return with false
+			start_num = std::distance(band.begin(), start_iter);
+			end_num = std::distance(band.begin(), end_iter);
+			ROS_DEBUG("Interpolation failed while trying to fill gap between bubble %d and %d.", start_num, end_num);
+			return false;
+		}
+		// assign center
+		interpolated_bubble.center = interpolated_center;
 	}
-
+	else
+	{
+		if(!interpolateBubblesCarlike(*start_iter, *end_iter, interpolated_bubble))
+		{
+			// interpolation failed (for whatever reason), so return with false
+			start_num = std::distance(band.begin(), start_iter);
+			end_num = std::distance(band.begin(), end_iter);
+			ROS_DEBUG("Interpolation failed while trying to fill gap between bubble %d and %d.", start_num, end_num);
+			return false;
+		}
+		 interpolated_center = interpolated_bubble.center;
+	}
 
 	#ifdef DEBUG_EBAND_
 	ROS_DEBUG("Fill recursive - calc expansion of interpolated bubble");
@@ -792,8 +808,7 @@ bool EBandPlanner::fillGap(std::vector<Bubble>& band, std::vector<Bubble>::itera
 	ROS_DEBUG("Fill recursive - inserting interpolated bubble at (%f, %f), with expansion %f", interpolated_center.pose.position.x, interpolated_center.pose.position.y, distance);
 	#endif
 
-	// insert bubble and assign center and expansion
-	interpolated_bubble.center = interpolated_center;
+	// insert bubble and assign expansion
 	interpolated_bubble.expansion = distance;
 	// insert bubble (vector.insert() inserts elements before given iterator) and get iterator pointing to it
 	tmp_iter = band.insert(end_iter, interpolated_bubble);
@@ -1061,8 +1076,8 @@ bool EBandPlanner::applyForces(int bubble_num, std::vector<Bubble>& band, std::v
 	bubble_jump.angular.z = angles::normalize_angle(bubble_jump.angular.z);
 	
 	// limit jump
-	if(fabs(bubble_jump.linear.x) > band.at(bubble_num).expansion/10) bubble_jump.linear.x *= band.at(bubble_num).expansion/10/fabs(bubble_jump.linear.x);
-	if(fabs(bubble_jump.linear.y) > band.at(bubble_num).expansion/10) bubble_jump.linear.y *= band.at(bubble_num).expansion/10/fabs(bubble_jump.linear.y);
+	if(fabs(bubble_jump.linear.x) > band.at(bubble_num).expansion/20) bubble_jump.linear.x *= band.at(bubble_num).expansion/20/fabs(bubble_jump.linear.x);
+	if(fabs(bubble_jump.linear.y) > band.at(bubble_num).expansion/20) bubble_jump.linear.y *= band.at(bubble_num).expansion/20/fabs(bubble_jump.linear.y);
 	if(fabs(bubble_jump.angular.z) > 0.1) bubble_jump.angular.z *= 0.1/fabs(bubble_jump.angular.z);
 	
 	// apply changes to calc tmp bubble position
@@ -1514,7 +1529,8 @@ bool EBandPlanner::calcInternalForces(int bubble_num, std::vector<Bubble> band, 
 	if(bubble_num == 1) startfaktor *= 2.0;
 	if(bubble_num == ((int) band.size() - 2)) endfaktor *= 2.0;
 		
-	float distLR = sqrt((Bub_p.L.x-Bub.R.x)*(Bub_p.L.x-Bub.R.x)+(Bub_p.L.y-Bub.R.y)*(Bub_p.L.y-Bub.R.y));
+	
+	double distLR = PointDistance(Bub_p.L, Bub.R);
 	if(distLR < 2*turning_radius_)
 	{
 		if(distLR < tiny_bubble_distance_) distLR = tiny_bubble_distance_;
@@ -1525,7 +1541,7 @@ bool EBandPlanner::calcInternalForces(int bubble_num, std::vector<Bubble> band, 
 		wrench.torque.z += (Bub.R.x-Bub.center.pose.position.x)*fy-(Bub.R.y-Bub.center.pose.position.y)*fx;
 	}
 	
-	distLR = sqrt((Bub_n.L.x-Bub.R.x)*(Bub_n.L.x-Bub.R.x)+(Bub_n.L.y-Bub.R.y)*(Bub_n.L.y-Bub.R.y));
+	distLR = PointDistance(Bub_n.L, Bub.R);
 	if(distLR < 2*turning_radius_)
 	{
 		if(distLR < tiny_bubble_distance_) distLR = tiny_bubble_distance_;
@@ -1536,7 +1552,7 @@ bool EBandPlanner::calcInternalForces(int bubble_num, std::vector<Bubble> band, 
 		wrench.torque.z += (Bub.R.x-Bub.center.pose.position.x)*fy-(Bub.R.y-Bub.center.pose.position.y)*fx;
 	}
 	
-	distLR = sqrt((Bub_p.R.x-Bub.L.x)*(Bub_p.R.x-Bub.L.x)+(Bub_p.R.y-Bub.L.y)*(Bub_p.R.y-Bub.L.y));
+	distLR = PointDistance(Bub_p.R, Bub.L);
 	if(distLR < 2*turning_radius_)
 	{
 		if(distLR < tiny_bubble_distance_) distLR = tiny_bubble_distance_;		
@@ -1547,7 +1563,7 @@ bool EBandPlanner::calcInternalForces(int bubble_num, std::vector<Bubble> band, 
 		wrench.torque.z += (Bub.L.x-Bub.center.pose.position.x)*fy-(Bub.L.y-Bub.center.pose.position.y)*fx;
 	}
 	
-	distLR = sqrt((Bub_n.R.x-Bub.L.x)*(Bub_n.R.x-Bub.L.x)+(Bub_n.R.y-Bub.L.y)*(Bub_n.R.y-Bub.L.y));
+	distLR = PointDistance(Bub_n.R, Bub.L);
 	if(distLR < 2*turning_radius_)
 	{
 		if(distLR < tiny_bubble_distance_) distLR = tiny_bubble_distance_;
@@ -1813,6 +1829,185 @@ bool EBandPlanner::interpolateBubbles(geometry_msgs::PoseStamped start_center, g
 }
 
 
+bool EBandPlanner::interpolateBubblesCarlike(Bubble start_bubble, Bubble end_bubble, Bubble& interpolated_bubble)
+{
+	// check if plugin initialized
+	if(!initialized_)
+	{
+		ROS_ERROR("This planner has not been initialized, please call initialize() before using this planner");
+		return false;
+	}
+
+	// instantiate local variables
+	geometry_msgs::Pose2D start_pose2D, end_pose2D, interpolated_pose2D;
+
+	// copy header
+	interpolated_bubble.center.header = start_bubble.center.header;
+	
+	// set bubble parameter
+	start_bubble.center_ax_dist = center_ax_dist_;
+	end_bubble.center_ax_dist = center_ax_dist_;
+	start_bubble.radius = turning_radius_;
+	end_bubble.radius = turning_radius_;
+	start_bubble.setLR();
+	end_bubble.setLR();
+
+	// convert quaternions to euler angles - at this point this no longer works in 3D !!
+	PoseToPose2D(start_bubble.center.pose, start_pose2D);
+	PoseToPose2D(end_bubble.center.pose, end_pose2D);
+	
+	ROS_DEBUG("start_bubble: C.x = %f, L.x = %f, radius = %f",start_bubble.center.pose.position.x,start_bubble.L.x,start_bubble.radius);
+	ROS_DEBUG("end_bubble: C.x = %f, L.x = %f, radius = %f",end_bubble.center.pose.position.x,end_bubble.L.x,end_bubble.radius);
+	
+	// angle of interpolated bubble
+	double theta_i;
+	// angle of vector connecting two turning circles of the same direction of rotation, forwards
+	double theta_f;
+	// angle of vector connecting two turning circles of the same direction of rotation, backwards
+	double theta_b;
+	// angle theta_f or theta_b, leading to the shorter path
+	double short_theta;
+	
+	// figure out shortest way
+	double dist_RR = PointDistance(start_bubble.R,end_bubble.R);
+	double dist_LL = PointDistance(start_bubble.L,end_bubble.L);
+	double stct = 1e-3;	// same turning circle threshold
+	
+	// distinguish between 2 fundamental cases:
+	
+	// case 1: start and end bubble lie on the same turning circle
+	if (-stct < dist_RR && dist_RR < stct)
+	{
+		// turning circle is the right one
+		theta_i = start_pose2D.theta + angles::normalize_angle(end_pose2D.theta-start_pose2D.theta)/2;
+		interpolated_pose2D.x = end_bubble.R.x - end_bubble.radius*sin(theta_i) + end_bubble.center_ax_dist*cos(theta_i);
+		interpolated_pose2D.y = end_bubble.R.y + end_bubble.radius*cos(theta_i) + end_bubble.center_ax_dist*sin(theta_i);
+	}
+	else if (-stct < dist_LL && dist_LL < stct)
+	{
+		// turning circle is the left one
+		theta_i = start_pose2D.theta + angles::normalize_angle(end_pose2D.theta-start_pose2D.theta)/2;
+		interpolated_pose2D.x = end_bubble.L.x + end_bubble.radius*sin(theta_i) + end_bubble.center_ax_dist*cos(theta_i);
+		interpolated_pose2D.y = end_bubble.L.y - end_bubble.radius*cos(theta_i) + end_bubble.center_ax_dist*sin(theta_i);
+	}
+	else
+	{
+		//case 2: path consist of two turnings and a straight piece between. For simplicity consider the two turnings to have the same rotation
+		// length of the straight piece
+		double dist_str;
+		
+		if(dist_RR < dist_LL)
+		{
+			// right turns. Now decide whether the straight piece shall be driven forwards or backwards
+			theta_f = atan2((end_bubble.R.y - start_bubble.R.y),(end_bubble.R.x - start_bubble.R.x));
+			theta_b = atan2((start_bubble.R.y - end_bubble.R.y),(start_bubble.R.x - end_bubble.R.x));
+			double dth_f = fabs(angles::normalize_angle(theta_f-start_pose2D.theta))+fabs(angles::normalize_angle(end_pose2D.theta-theta_f));
+			double dth_b = fabs(angles::normalize_angle(theta_b-start_pose2D.theta))+fabs(angles::normalize_angle(end_pose2D.theta-theta_b));
+			
+			if(dth_f < dth_b)
+			{
+				// forwards
+				short_theta = theta_f;
+			}
+			else
+			{
+				// backwards
+				short_theta = theta_b;
+			}
+			
+			dist_str = PointDistance(start_bubble.R,end_bubble.R);
+		}
+		else
+		{
+			// left turns. Now decide whether the straight piece shall be driven forwards or backwards
+			theta_f = atan2((end_bubble.L.y - start_bubble.L	.y),(end_bubble.L.x - start_bubble.L.x));
+			theta_b = atan2((start_bubble.L.y - end_bubble.L.y),(start_bubble.L.x - end_bubble.L.x));
+			double dth_f = fabs(angles::normalize_angle(theta_f-start_pose2D.theta))+fabs(angles::normalize_angle(end_pose2D.theta-theta_f));
+			double dth_b = fabs(angles::normalize_angle(theta_b-start_pose2D.theta))+fabs(angles::normalize_angle(end_pose2D.theta-theta_b));
+			
+			if(dth_f < dth_b)
+			{
+				// forwards
+				short_theta = theta_f;
+			}
+			else
+			{
+				// backwards
+				short_theta = theta_b;
+			}
+				
+			dist_str = PointDistance(start_bubble.L,end_bubble.L);
+		}
+		
+		// angle difference between start or end orientation and orientation at which the turning circle is left or arrived at, respectively.
+		double dth1 = angles::normalize_angle(short_theta - start_pose2D.theta);
+		double dth2 = angles::normalize_angle(end_pose2D.theta - short_theta);
+		
+		// length of the arcs
+		double dl1 = fabs(dth1)*start_bubble.radius;
+		double dl2 = fabs(dth2)*end_bubble.radius;
+		// half length of the total path
+		double dl = (dl1 + dl2 + dist_str)/2;
+		
+		// calculate the middle of the path
+		if (dl <= dl1)
+		{
+			// middle lies on the first turning circle
+			theta_i = start_pose2D.theta + dth1*dl/dl1;
+			if (dist_RR < dist_LL)
+			{
+				interpolated_pose2D.x = start_bubble.R.x - start_bubble.radius*sin(theta_i) + start_bubble.center_ax_dist*cos(theta_i);
+				interpolated_pose2D.y = start_bubble.R.y + start_bubble.radius*cos(theta_i) + start_bubble.center_ax_dist*sin(theta_i);
+			}
+			else
+			{
+				interpolated_pose2D.x = start_bubble.L.x + start_bubble.radius*sin(theta_i) + start_bubble.center_ax_dist*cos(theta_i);
+				interpolated_pose2D.y = start_bubble.L.y - start_bubble.radius*cos(theta_i) + start_bubble.center_ax_dist*sin(theta_i);
+			}			
+		}
+		else if (dl < dl1 + dist_str)
+		{
+			// middle lies on the straight piece
+			theta_i = short_theta;
+			if (dist_RR < dist_LL)
+			{
+				interpolated_pose2D.x = start_bubble.R.x + (end_bubble.R.x-start_bubble.R.x)*(dl-dl1)/dist_str - start_bubble.radius*sin(theta_i) + start_bubble.center_ax_dist*cos(theta_i);
+				interpolated_pose2D.y = start_bubble.R.y + (end_bubble.R.y-start_bubble.R.y)*(dl-dl1)/dist_str + start_bubble.radius*cos(theta_i) + start_bubble.center_ax_dist*sin(theta_i);
+			}
+			else
+			{
+				interpolated_pose2D.x = start_bubble.L.x + (end_bubble.L.x-start_bubble.L.x)*(dl-dl1)/dist_str + start_bubble.radius*sin(theta_i) + start_bubble.center_ax_dist*cos(theta_i);
+				interpolated_pose2D.y = start_bubble.L.y + (end_bubble.L.y-start_bubble.L.y)*(dl-dl1)/dist_str - start_bubble.radius*cos(theta_i) + start_bubble.center_ax_dist*sin(theta_i);
+			}
+		}
+		else
+		{
+			// middle lies on the final turning circle
+			theta_i = short_theta + dth2 * (dl - dist_str - dl1) / dl2;
+			if (dist_RR < dist_LL)
+			{
+				interpolated_pose2D.x = end_bubble.R.x - end_bubble.radius*sin(theta_i) + end_bubble.center_ax_dist*cos(theta_i);
+				interpolated_pose2D.y = end_bubble.R.y + end_bubble.radius*cos(theta_i) + end_bubble.center_ax_dist*sin(theta_i);
+			}
+			else
+			{
+				interpolated_pose2D.x = end_bubble.L.x + end_bubble.radius*sin(theta_i) + end_bubble.center_ax_dist*cos(theta_i);
+				interpolated_pose2D.y = end_bubble.L.y - end_bubble.radius*cos(theta_i) + end_bubble.center_ax_dist*sin(theta_i);
+			}		
+		}
+	}
+	
+	// set the middle position and orientation to interpolated_bubble	
+	interpolated_pose2D.theta = angles::normalize_angle(theta_i);
+	Pose2DToPose(interpolated_bubble.center.pose, interpolated_pose2D);
+	// assign bubble radius and center to axle distance
+	interpolated_bubble.radius = end_bubble.radius;
+	interpolated_bubble.center_ax_dist = end_bubble.center_ax_dist;
+
+	return true;
+}
+
+
 bool EBandPlanner::checkOverlap(Bubble bubble1, Bubble bubble2)
 {
 	// check if plugin initialized
@@ -1833,19 +2028,36 @@ bool EBandPlanner::checkOverlap(Bubble bubble1, Bubble bubble2)
 	// compare with size of the two bubbles
 	if(distance >= min_bubble_overlap_ * (bubble1.expansion + bubble2.expansion))
 		return false;
-
+	
 	// kinematic properties
-	if(carOverlap_)
+	double tol = 0.3;
+	bubble1.radius = turning_radius_;
+	bubble2.radius =  turning_radius_;
+	bubble1.center_ax_dist = center_ax_dist_;
+	bubble2.center_ax_dist = center_ax_dist_;
+	bubble1.setLR();
+	bubble2.setLR();
+	
+	if(PointDistance(bubble1.L,bubble2.R) < 2.0*bubble1.radius - tol)
 	{
-	/*if(sqrt((bubble1.L.x-bubble2.R.x)*(bubble1.L.x-bubble2.R.x)+(bubble1.L.y-bubble2.R.y)*(bubble1.L.y-bubble2.R.y)) < 2*bubble1.radius)
+		ROS_DEBUG("Pointdistance = %f",PointDistance(bubble1.L,bubble2.R));
 		return false;
+	}
 		
-	if(sqrt((bubble1.R.x-bubble2.L.x)*(bubble1.R.x-bubble2.L.x)+(bubble1.R.y-bubble2.L.y)*(bubble1.R.y-bubble2.L.y)) < 2*bubble1.radius)
-		return false;*/
+	if(PointDistance(bubble1.R,bubble2.L) < 2.0*bubble1.radius - tol)
+	{
+		ROS_DEBUG("Pointdistance = %f",PointDistance(bubble1.L,bubble2.R));
+		return false;
 	}
 	
 	// everything fine - bubbles overlap
 	return true;
+}
+
+
+double EBandPlanner::PointDistance(geometry_msgs::Point start_point, geometry_msgs::Point end_point)
+{
+	return sqrt((end_point.x-start_point.x) * (end_point.x-start_point.x) + (end_point.y-start_point.y) * (end_point.y-start_point.y));
 }
 
 
@@ -2012,9 +2224,6 @@ bool EBandPlanner::convertPlanToBand(std::vector<geometry_msgs::PoseStamped> pla
 
 		// set poses in plan as centers of bubbles
 		tmp_band[i].center = plan[i];
-		tmp_band[i].center_ax_dist = center_ax_dist_;		
-		tmp_band[i].radius = turning_radius_;
-		tmp_band[i].setLR();
 		
 		// calc Size of Bubbles by calculating Dist to nearest Obstacle [depends kinematic, environment]
 		if(!calcObstacleKinematicDistance(tmp_band[i].center.pose, distance))
