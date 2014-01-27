@@ -168,6 +168,9 @@ class EBandPlanner{
     		double costmap_weight_; // the costmap weight or scaling factor
 		double turning_radius_; // the minimal turning radius for ackermann-cinematics
 		double center_ax_dist_; // distance from robot center to axles
+		double overlap_tolerance_; // regulates distance of the turning circles which counts as gap
+		double fill_tol_; // gap is just filled if this tolerance is trespassed
+		double remove_tol_; // bubble will be removed if this tolerance is trespassed
 
 		// pointer to locally created objects (delete - except for smart-ptrs:)
 		base_local_planner::CostmapModel* world_model_; // local world model
