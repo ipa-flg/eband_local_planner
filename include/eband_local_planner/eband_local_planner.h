@@ -158,6 +158,7 @@ class EBandPlanner{
 		std::vector<double> acc_lim_; ///<@brief acceleration limits for translational and rotational motion
 		int num_optim_iterations_; ///<@brief maximal number of iteration steps during optimization of band
 		double internal_force_gain_; ///<@brief gain for internal forces ("Elasticity of Band")
+		double ackermann_force_gain_; ///<@brief gain for ackermann forces ("carlike motion favoured")
 		double external_force_gain_; ///<@brief gain for external forces ("Penalty on low distance to abstacles")
 		double tiny_bubble_distance_; ///<@brief internal forces between two bubbles are only calc. if there distance is bigger than this lower bound
 		double tiny_bubble_expansion_; ///<@brief lower bound for bubble expansion. below this bound bubble is considered as "in collision"

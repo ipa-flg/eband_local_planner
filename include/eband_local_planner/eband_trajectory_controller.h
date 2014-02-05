@@ -127,6 +127,7 @@ class EBandTrajectoryCtrl{
 		 */
 		bool getTwist(geometry_msgs::Twist& twist_cmd, bool& goal_reached);
 		bool getTwistDifferentialDrive(geometry_msgs::Twist& twist_cmd, bool& goal_reached);
+		bool getTwistAckermann(geometry_msgs::Twist& desired_velocity, double dist_to_goal);
 
 	private:
 
@@ -140,6 +141,11 @@ class EBandTrajectoryCtrl{
     control_toolbox::Pid pid_;
 
 		// parameters
+    bool car_;
+    double turning_flag_, angular_weight_;
+    bool switch_;
+    double turning_radius_; // the minimal turning radius for ackermann-cinematics
+    double center_ax_dist_; // distance from robot center to axles	
     bool differential_drive_hack_;
     double k_p_, k_nu_, k_int_, k_diff_, ctrl_freq_;
     double acc_max_, virt_mass_;
@@ -168,6 +174,7 @@ class EBandTrajectoryCtrl{
 		geometry_msgs::Twist odom_vel_;
 		geometry_msgs::Twist last_vel_;
 		geometry_msgs::Pose ref_frame_band_;
+		geometry_msgs::Pose intermediate_state_;
 
 		///@brief defines sign of a double
 		inline double sign(double n)
@@ -211,6 +218,15 @@ class EBandTrajectoryCtrl{
 		double getBubbleTargetVel(const int& target_bub_num, const std::vector<Bubble>& band, geometry_msgs::Twist& VelDir);
 
 		void configure_callback(eband_local_planner::EBandLocalPlannerConfig &config, uint32_t level) ;
+
+		/**
+		 * @brief this checks whether two bubbles are reachable with Ackermann cinematics
+		 * @param band on which we want to check
+		 * @param iterator to first bubble
+		 * @param iterator to second bubble
+		 * @return true if bubbles are reachable
+		 */
+		bool checkReachability(Bubble bubble1, Bubble bubble2);
 
 };
 };

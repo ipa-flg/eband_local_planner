@@ -85,8 +85,8 @@ void EBandPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costma
 		pn.param("turning_radius", turning_radius_, 0.6);
 		pn.param("center_ax_dist", center_ax_dist_, 0.228);
 		pn.param("overlap_tolerance", overlap_tolerance_, 0.0);
-		pn.param("fill_tol", fill_tol_, 0.7);
-		pn.param("remove_tol", remove_tol_, 1.0);
+		pn.param("fill_tol", fill_tol_, 0.8);
+		pn.param("remove_tol", remove_tol_, 1.1);
 				
 		// connectivity checking
 		pn.param("eband_min_relative_bubble_overlap_", min_bubble_overlap_, 0.7);
@@ -96,8 +96,9 @@ void EBandPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costma
 		pn.param("eband_tiny_bubble_expansion", tiny_bubble_expansion_, 0.01);
 
 		// optimization - force calculation
-		pn.param("eband_internal_force_gain", internal_force_gain_, 1.0);
-		pn.param("eband_external_force_gain", external_force_gain_, 2.0);
+		pn.param("eband_internal_force_gain", internal_force_gain_, 0.2);
+		pn.param("eband_ackermann_force_gain", ackermann_force_gain_, 2.0);		
+		pn.param("eband_external_force_gain", external_force_gain_, 3.0);
 		pn.param("num_iterations_eband_optimization", num_optim_iterations_, 3);
 
 		// recursive approximation of bubble equilibrium position based
@@ -686,9 +687,9 @@ bool EBandPlanner::removeAndFill(std::vector<Bubble>& band, std::vector<Bubble>:
 		overlap_tolerance_ = remove_tol_;			
 		if(checkOverlap(*(tmp_iter-1), *(tmp_iter+1)))
 		{
-			#ifdef DEBUG_EBAND_
+			//#ifdef DEBUG_EBAND_
 			ROS_DEBUG("Refining Recursive - Removing middle bubble");
-			#endif
+			//#endif
 
 			// again: get distance between (tmp_iter + 1) and end_iter, (+1 because we will erase tmp_iter itself)
 			diff_int = (int) std::distance((tmp_iter + 1), end_iter);
@@ -712,7 +713,7 @@ bool EBandPlanner::removeAndFill(std::vector<Bubble>& band, std::vector<Bubble>:
 	}
 
 	// check if band has at least one bubble between start and end
-	if(band.size() > 2)
+	if(band.size() >= 2)
 	{
 		overlap_tolerance_ = fill_tol_;
 		overlap = checkOverlap(*start_iter, *end_iter);
@@ -771,7 +772,7 @@ bool EBandPlanner::fillGap(std::vector<Bubble>& band, std::vector<Bubble>::itera
 	#endif
 
 	// interpolate between bubbles [depends kinematic]
-	if(turning_radius_ == 0.0)
+	if(turning_radius_ >= 0.0)
 	{
 		if(!interpolateBubbles(start_iter->center, end_iter->center, interpolated_center))
 		{
@@ -1099,9 +1100,9 @@ bool EBandPlanner::applyForces(int bubble_num, std::vector<Bubble>& band, std::v
 	bubble_jump.angular.z = angles::normalize_angle(bubble_jump.angular.z);
 	
 	// limit jump
-	if(fabs(bubble_jump.linear.x) > band.at(bubble_num).expansion/10) bubble_jump.linear.x *= band.at(bubble_num).expansion/10/fabs(bubble_jump.linear.x);
-	if(fabs(bubble_jump.linear.y) > band.at(bubble_num).expansion/10) bubble_jump.linear.y *= band.at(bubble_num).expansion/10/fabs(bubble_jump.linear.y);
-	if(fabs(bubble_jump.angular.z) > 0.1) bubble_jump.angular.z *= 0.1/fabs(bubble_jump.angular.z);
+	if(fabs(bubble_jump.linear.x) > band.at(bubble_num).expansion/20) bubble_jump.linear.x *= band.at(bubble_num).expansion/20/fabs(bubble_jump.linear.x);
+	if(fabs(bubble_jump.linear.y) > band.at(bubble_num).expansion/20) bubble_jump.linear.y *= band.at(bubble_num).expansion/20/fabs(bubble_jump.linear.y);
+	if(fabs(bubble_jump.angular.z) > 0.01) bubble_jump.angular.z *= 0.01/fabs(bubble_jump.angular.z);
 	
 	// apply changes to calc tmp bubble position
 	new_bubble_pose2D.x = bubble_pose2D.x + bubble_jump.linear.x;
@@ -1525,8 +1526,8 @@ bool EBandPlanner::calcInternalForces(int bubble_num, std::vector<Bubble> band, 
 	float orfac1 = (cos(difference1.angular.z/costmap_ros_->getCircumscribedRadius())+1)/2;
 	float orfac2 = (cos(difference2.angular.z/costmap_ros_->getCircumscribedRadius())+1)/2;
 	// or not
-	orfac1 = 1.0;
-	orfac2 = 1.0;
+	//orfac1 = 1.0;
+	//orfac2 = 1.0;
 	
 	wrench.force.x = internal_force_gain_*(difference1.linear.x/distance1*orfac1 + difference2.linear.x/distance2*orfac2);
 	wrench.force.y = internal_force_gain_*(difference1.linear.y/distance1*orfac1 + difference2.linear.y/distance2*orfac2);
@@ -1537,7 +1538,7 @@ bool EBandPlanner::calcInternalForces(int bubble_num, std::vector<Bubble> band, 
 
 	ROS_DEBUG("Internal Forces: x=%f, y=%f, az=%f",wrench.force.x,wrench.force.y,wrench.torque.z);
 
-	//additional force to arrange bubbles in a carlike-connected way
+	//additional ackermann force to arrange bubbles in a carlike-connected way
 
 	band.at(bubble_num-1).setLR();
 	curr_bubble.setLR();
@@ -1547,7 +1548,7 @@ bool EBandPlanner::calcInternalForces(int bubble_num, std::vector<Bubble> band, 
 	Bubble Bub = curr_bubble;
 	Bubble Bub_n = band.at(bubble_num+1);
 
-	float addForce_fac = 1.0*turning_radius_;
+	float addForce_fac = ackermann_force_gain_*turning_radius_;
 	float startfaktor = addForce_fac;
 	float endfaktor = addForce_fac;
 	if(bubble_num == 1) startfaktor *= 2.0;
