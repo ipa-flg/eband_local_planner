@@ -127,7 +127,7 @@ class EBandTrajectoryCtrl{
 		 */
 		bool getTwist(geometry_msgs::Twist& twist_cmd, bool& goal_reached);
 		bool getTwistDifferentialDrive(geometry_msgs::Twist& twist_cmd, bool& goal_reached);
-		bool getTwistAckermann(geometry_msgs::Twist& desired_velocity, double dist_to_goal);
+		bool getTwistAckermann(geometry_msgs::Twist& control_deviation, double dist_to_goal);
 
 	private:
 

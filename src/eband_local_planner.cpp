@@ -85,7 +85,7 @@ void EBandPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costma
 		pn.param("turning_radius", turning_radius_, 0.6);
 		pn.param("center_ax_dist", center_ax_dist_, 0.228);
 		pn.param("overlap_tolerance", overlap_tolerance_, 0.0);
-		pn.param("fill_tol", fill_tol_, 0.8);
+		pn.param("fill_tol", fill_tol_, 0.6);
 		pn.param("remove_tol", remove_tol_, 1.1);
 				
 		// connectivity checking
@@ -96,7 +96,7 @@ void EBandPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costma
 		pn.param("eband_tiny_bubble_expansion", tiny_bubble_expansion_, 0.01);
 
 		// optimization - force calculation
-		pn.param("eband_internal_force_gain", internal_force_gain_, 0.2);
+		pn.param("eband_internal_force_gain", internal_force_gain_, 0.3);
 		pn.param("eband_ackermann_force_gain", ackermann_force_gain_, 2.0);		
 		pn.param("eband_external_force_gain", external_force_gain_, 3.0);
 		pn.param("num_iterations_eband_optimization", num_optim_iterations_, 3);
