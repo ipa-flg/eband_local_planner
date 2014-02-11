@@ -713,16 +713,20 @@ bool EBandPlanner::removeAndFill(std::vector<Bubble>& band, std::vector<Bubble>:
 	}
 
 
-	overlap_tolerance_ = fill_tol_;
-	overlap = checkOverlap(*start_iter, *end_iter);
-		
-	if(overlap)
+	// check if band has at least one bubble between start and end
+	if(band.size() >= 2)
 	{
-		#ifdef DEBUG_EBAND_
-		ROS_DEBUG("Refining Recursive - small Carlike Gap detected, fill not");
-		#endif
-	
-		return true;
+		overlap_tolerance_ = fill_tol_;
+		overlap = checkOverlap(*start_iter, *end_iter);
+		
+		if(overlap)
+		{
+			#ifdef DEBUG_EBAND_
+			ROS_DEBUG("Refining Recursive - small Carlike Gap detected, fill not");
+			#endif
+			
+			return true;
+		}
 	}
 
 
@@ -771,6 +775,8 @@ bool EBandPlanner::fillGap(std::vector<Bubble>& band, std::vector<Bubble>::itera
 
 	// interpolate between bubbles [depends kinematic]
 	bool interpolate_carlike = false;
+	//if (((int) elastic_band_.size()) == 2)
+		//interpolate_carlike = true;
 	if(interpolate_carlike)
 	{
 		if(!interpolateBubblesCarlike(*start_iter, *end_iter, interpolated_bubble))
@@ -1869,7 +1875,7 @@ bool EBandPlanner::interpolateBubblesCarlike(Bubble start_bubble, Bubble end_bub
 	// copy header
 	interpolated_bubble.center.header = start_bubble.center.header;
 	
-	// set bubble parameter
+	// set bubble parameters
 	start_bubble.center_ax_dist = center_ax_dist_;
 	end_bubble.center_ax_dist = center_ax_dist_;
 	start_bubble.radius = turning_radius_;
@@ -2013,7 +2019,7 @@ bool EBandPlanner::interpolateBubblesCarlike(Bubble start_bubble, Bubble end_bub
 	Pose2DToPose(interpolated_bubble.center.pose, interpolated_pose2D);
 
 	#ifdef DEBUG_EBAND_
-	ROS_DEBUG("int_bubble: C.x = %f, C.y = %f, theta = %f",interpolated_bubble.center.pose.position.x,interpolated_bubble.center.pose.position.y,interpolated_pose2D.theta);
+	ROS_DEBUG("interpolated bubble: C.x = %f, C.y = %f, theta = %f",interpolated_bubble.center.pose.position.x,interpolated_bubble.center.pose.position.y,interpolated_pose2D.theta);
 	#endif
 	
 	return true;

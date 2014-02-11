@@ -617,7 +617,7 @@ bool EBandTrajectoryCtrl::getTwist(geometry_msgs::Twist& twist_cmd, bool& goal_r
 			ROS_DEBUG("switch ist an");
 			
 			if (fabs(control_deviation.linear.y) > 0.1)
-				control_deviation.linear.y = 0.05;
+				control_deviation.linear.y *= 0.05/fabs(control_deviation.linear.y);
 			else
 				control_deviation.linear.y = control_deviation.linear.y/2.0;
 				
@@ -970,8 +970,8 @@ double EBandTrajectoryCtrl::getBubbleTargetVel(const int& target_bub_num, const 
 	VelDir.angular.z =bubble_diff.angular.z/bubble_distance;
 
 	// if next bubble outside this one we will always be able to break fast enough
-	if(bubble_distance > band.at(target_bub_num).expansion )
-		return v_max_curr_bub;
+	//if(bubble_distance > band.at(target_bub_num).expansion )
+		//return v_max_curr_bub;
 
 
 	// next bubble center inside this bubble - take into account restrictions on next bubble
@@ -987,6 +987,9 @@ double EBandTrajectoryCtrl::getBubbleTargetVel(const int& target_bub_num, const 
 	// otherwise max. allowed vel is next vel + plus possible reduction on the way between the bubble-centers
 	delta_vel_max = sqrt(2 * bubble_distance * acc_max_);
 	v_max_curr_bub = v_max_next_bub + delta_vel_max;
+	if (switch_)
+		v_max_curr_bub = sqrt((elastic_band_.at(target_bub_num).expansion-0.1) * acc_max_);
+	ROS_DEBUG("Max velocity: %f, %f", v_max_curr_bub, elastic_band_.at(target_bub_num).expansion);
 
 	return v_max_curr_bub;
 }
