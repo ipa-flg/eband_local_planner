@@ -82,8 +82,8 @@ void EBandPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costma
 		// read parameters from parameter server
 		
 		// requirements for ackermann cinematics
-		pn.param("turning_radius", turning_radius_, 0.6);
-		pn.param("center_ax_dist", center_ax_dist_, 0.228);
+		pn.param("turning_radius", turning_radius_, 0.75);
+		pn.param("center_ax_dist", center_ax_dist_, 0.37);
 		pn.param("overlap_tolerance", overlap_tolerance_, 0.0);
 		pn.param("fill_tol", fill_tol_, 0.6);
 		pn.param("remove_tol", remove_tol_, 1.1);
@@ -687,9 +687,9 @@ bool EBandPlanner::removeAndFill(std::vector<Bubble>& band, std::vector<Bubble>:
 		overlap_tolerance_ = remove_tol_;			
 		if(checkOverlap(*(tmp_iter-1), *(tmp_iter+1)))
 		{
-			//#ifdef DEBUG_EBAND_
+			#ifdef DEBUG_EBAND_
 			ROS_DEBUG("Refining Recursive - Removing middle bubble");
-			//#endif
+			#endif
 
 			// again: get distance between (tmp_iter + 1) and end_iter, (+1 because we will erase tmp_iter itself)
 			diff_int = (int) std::distance((tmp_iter + 1), end_iter);
@@ -712,21 +712,19 @@ bool EBandPlanner::removeAndFill(std::vector<Bubble>& band, std::vector<Bubble>:
 		return true;
 	}
 
-	// check if band has at least one bubble between start and end
-	if(band.size() >= 2)
-	{
-		overlap_tolerance_ = fill_tol_;
-		overlap = checkOverlap(*start_iter, *end_iter);
+
+	overlap_tolerance_ = fill_tol_;
+	overlap = checkOverlap(*start_iter, *end_iter);
 		
-		if(overlap)
-		{
-			#ifdef DEBUG_EBAND_
-			ROS_DEBUG("Refining Recursive - small Carlike Gap detected, fill not");
-			#endif
-			
-			return true;
-		}
+	if(overlap)
+	{
+		#ifdef DEBUG_EBAND_
+		ROS_DEBUG("Refining Recursive - small Carlike Gap detected, fill not");
+		#endif
+	
+		return true;
 	}
+
 
 	#ifdef DEBUG_EBAND_
 	ROS_DEBUG("Refining Recursive - Gap detected, fill recursive");
@@ -772,7 +770,20 @@ bool EBandPlanner::fillGap(std::vector<Bubble>& band, std::vector<Bubble>::itera
 	#endif
 
 	// interpolate between bubbles [depends kinematic]
-	if(turning_radius_ >= 0.0)
+	bool interpolate_carlike = false;
+	if(interpolate_carlike)
+	{
+		if(!interpolateBubblesCarlike(*start_iter, *end_iter, interpolated_bubble))
+		{
+			// interpolation failed (for whatever reason), so return with false
+			start_num = std::distance(band.begin(), start_iter);
+			end_num = std::distance(band.begin(), end_iter);
+			ROS_DEBUG("Interpolation failed while trying to fill gap between bubble %d and %d.", start_num, end_num);
+			return false;
+		}
+		interpolated_center = interpolated_bubble.center;
+	}
+	else
 	{
 		if(!interpolateBubbles(start_iter->center, end_iter->center, interpolated_center))
 		{
@@ -785,18 +796,7 @@ bool EBandPlanner::fillGap(std::vector<Bubble>& band, std::vector<Bubble>::itera
 		// assign center
 		interpolated_bubble.center = interpolated_center;
 	}
-	else
-	{
-		if(!interpolateBubblesCarlike(*start_iter, *end_iter, interpolated_bubble))
-		{
-			// interpolation failed (for whatever reason), so return with false
-			start_num = std::distance(band.begin(), start_iter);
-			end_num = std::distance(band.begin(), end_iter);
-			ROS_DEBUG("Interpolation failed while trying to fill gap between bubble %d and %d.", start_num, end_num);
-			return false;
-		}
-		interpolated_center = interpolated_bubble.center;
-	}
+
 
 	#ifdef DEBUG_EBAND_
 	ROS_DEBUG("Fill recursive - calc expansion of interpolated bubble");
