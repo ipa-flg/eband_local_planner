@@ -82,10 +82,10 @@ void EBandPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costma
 		// read parameters from parameter server
 		
 		// requirements for ackermann cinematics
-		pn.param("turning_radius", turning_radius_, 0.75);
-		pn.param("center_ax_dist", center_ax_dist_, 0.37);
+		pn.param("turning_radius", turning_radius_, 0.6);
+		pn.param("center_ax_dist", center_ax_dist_, 0.228);
 		pn.param("overlap_tolerance", overlap_tolerance_, 0.0);
-		pn.param("fill_tol", fill_tol_, 0.6);
+		pn.param("fill_tol", fill_tol_, 0.7);
 		pn.param("remove_tol", remove_tol_, 1.1);
 				
 		// connectivity checking
@@ -2183,7 +2183,7 @@ bool EBandPlanner::calcObstacleKinematicDistance(geometry_msgs::Pose center_pose
     disc_cost = costmap_.getCost(cell_x, cell_y);
   }
 
-	// calculate distance to nearest obstacel from this cost (see costmap_2d in wiki for details)
+	// calculate distance to nearest obstacle from this cost (see costmap_2d in wiki for details)
 
 	// For reference: here comes an excerpt of the cost calculation within the costmap function
 	/*if(distance == 0)
@@ -2204,11 +2204,14 @@ bool EBandPlanner::calcObstacleKinematicDistance(geometry_msgs::Pose center_pose
     // footprint is definitely inside an obstacle - still bad
     distance = 0.0;
   } else {
-    if (disc_cost == 0) { // freespace, no estimate of distance
-      disc_cost = 1; // lowest non freespace cost
+    //if (disc_cost == 0) { // freespace, no estimate of distance
+    //  disc_cost = 1; // lowest non freespace cost
+    if (disc_cost <= 20) { // freespace, no estimate of distance
+      disc_cost = 20; // lowest non freespace cost
     } else if (disc_cost == 255) { // unknown space, we should never be here
       disc_cost = 1;
     }
+    //double factor = ((double) disc_cost) / (costmap_2d::INSCRIBED_INFLATED_OBSTACLE - 1);
     double factor = ((double) disc_cost) / (costmap_2d::INSCRIBED_INFLATED_OBSTACLE - 1);
     distance = -log(factor) / weight;
   }
