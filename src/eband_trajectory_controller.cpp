@@ -875,7 +875,7 @@ bool EBandTrajectoryCtrl::getTwistAckermann(geometry_msgs::Twist& control_deviat
 	H2.y = cdev.linear.y - center_ax_dist_*sin(cdev.angular.z);
 	
 	double dist_to_next_bubble = sqrt((H2.x-H1.x)*(H2.x-H1.x)+(H2.y-H1.y)*(H2.y-H1.y));
-	if ((dist_to_next_bubble < 0.5*center_ax_dist_ || !checkReachability(elastic_band_.at(0),elastic_band_.at(1))) && !switch_)
+	if ((dist_to_next_bubble < 0.2*center_ax_dist_ || !checkReachability(elastic_band_.at(0),elastic_band_.at(1))) && !switch_)
 	{
 		ROS_DEBUG("not reachable");
 		if (fabs(cdev.linear.x) < turning_radius_*fabs(cdev.angular.z))
@@ -893,12 +893,12 @@ bool EBandTrajectoryCtrl::getTwistAckermann(geometry_msgs::Twist& control_deviat
 		else
 			arclength = fabs(H2.x-H1.x);
 			
-		double a = 0.2;
+		double a = 0.1;
 		if (H2.x-H1.x < 0.0)
-			a = 0.3;
+			a = 0.2;
 		
 		if (switch_)
-			a *= 2;
+			a *= 3;
 			
 		theta_reachable = theta_reachable + a*sqrt(fabs(theta_reachable - cdev.angular.z))*sign(theta_reachable - cdev.angular.z);
 	
@@ -985,10 +985,21 @@ double EBandTrajectoryCtrl::getBubbleTargetVel(const int& target_bub_num, const 
 
 
 	// otherwise max. allowed vel is next vel + plus possible reduction on the way between the bubble-centers
+	
 	delta_vel_max = sqrt(2 * bubble_distance * acc_max_);
-	v_max_curr_bub = v_max_next_bub + delta_vel_max;
+	if (v_max_curr_bub > v_max_next_bub + delta_vel_max)
+		v_max_curr_bub = v_max_next_bub + delta_vel_max;
+	
 	if (switch_)
-		v_max_curr_bub = sqrt((elastic_band_.at(target_bub_num).expansion-0.1) * acc_max_);
+	{
+		if (elastic_band_.at(target_bub_num).expansion > 0.05)
+			v_max_curr_bub = sqrt((elastic_band_.at(target_bub_num).expansion-0.05) * acc_max_);
+		else
+		{
+			v_max_curr_bub = 0;
+			switch_ = false;
+		}
+	}
 	ROS_DEBUG("Max velocity: %f, %f", v_max_curr_bub, elastic_band_.at(target_bub_num).expansion);
 
 	return v_max_curr_bub;
