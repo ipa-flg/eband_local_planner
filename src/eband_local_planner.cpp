@@ -82,8 +82,8 @@ void EBandPlanner::initialize(std::string name, costmap_2d::Costmap2DROS* costma
 		// read parameters from parameter server
 		
 		// requirements for ackermann cinematics
-		pn.param("turning_radius", turning_radius_, 0.75);
-		pn.param("center_ax_dist", center_ax_dist_, 0.37);
+		pn.param("turning_radius", turning_radius_, 0.6);
+		pn.param("center_ax_dist", center_ax_dist_, 0.228);
 		pn.param("overlap_tolerance", overlap_tolerance_, 0.0);
 		pn.param("fill_tol", fill_tol_, 0.6);
 		pn.param("remove_tol", remove_tol_, 1.1);

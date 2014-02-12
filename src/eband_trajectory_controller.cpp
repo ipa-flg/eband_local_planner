@@ -121,8 +121,8 @@ void EBandTrajectoryCtrl::initialize(std::string name, costmap_2d::Costmap2DROS*
 	    node_private.param("differential_drive", differential_drive_hack_, true);
 
 		// requirements for ackermann cinematics
-		node_private.param("turning_radius", turning_radius_, 0.75);
-		node_private.param("center_ax_dist", center_ax_dist_, 0.37);
+		node_private.param("turning_radius", turning_radius_, 0.6);
+		node_private.param("center_ax_dist", center_ax_dist_, 0.228);
 	    node_private.param("car", car_, true);
 	    node_private.param("turning_flag", turning_flag_, 1.0);
 	    node_private.param("switch", switch_, false);
